@@ -65,7 +65,7 @@ vllm serve ~/models/Qwen2.5-7B-Instruct --dtype half --max-model-len 4096
 
 *   **VRAM Limits:** V100 GPUs come in 16GB and 32GB variants. Ensure your model and KV cache fit entirely within VRAM. Q4_K_M and Q5_K_M quantizations work well for most models.
 *   **CUDA Graphs:** Unlike the P100, the V100 fully supports CUDA graphs. `llama.cpp` utilizes these automatically for batch size 1, significantly improving token generation speed.
-*   **No Flash Attention:** The V100 (sm_70) does not support FlashAttention v2 (requires Ampere sm_80+). The `-fa` flag in llama.cpp will not provide benefits on this hardware.
+*   **Flash Attention:** While standard FlashAttention-2 (e.g. standard PyTorch packages) requires Ampere sm_80+, `llama.cpp`'s custom Flash Attention kernels (`-fa 1`) DO support Volta sm_70 and are fully utilized for optimal performance.
 *   **No BF16:** The V100 does not support BF16. Always use FP16 (`--dtype half` in vLLM, default in llama.cpp).
 *   **Multi-GPU:** For PCIe V100s, use `--split-mode layer` (default). For SXM2/NVLink V100s, `--split-mode tensor` can offer better performance due to the 300 GB/s NVLink 2.0 bandwidth.
 *   **CUDA Version:** These toolboxes use CUDA 12.6.3 — the last CUDA release with full, non-deprecated sm_70 support. CUDA 13.0+ has removed V100 architecture support entirely.
