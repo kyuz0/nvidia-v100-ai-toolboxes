@@ -1,0 +1,63 @@
+# build stage
+FROM registry.fedoraproject.org/fedora:43 AS builder
+
+# deps
+RUN dnf -y --nodocs --setopt=install_weak_deps=False install \
+      git vim \
+      make gcc cmake ninja-build lld clang clang-devel compiler-rt libcurl-devel \
+      vulkan-loader-devel vulkaninfo \
+      glslc glslang spirv-headers-devel \
+    && dnf clean all && rm -rf /var/cache/dnf/*
+
+# llama.cpp
+WORKDIR /opt/llama.cpp
+ARG REPO=https://github.com/ggerganov/llama.cpp.git
+ARG BRANCH=master
+RUN git clone -b ${BRANCH} --single-branch --recursive ${REPO} .
+
+# build
+RUN git clean -xdf \
+ && git submodule update --recursive \
+ && cmake -S . -B build -G Ninja \
+      -DGGML_VULKAN=ON \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DGGML_RPC=ON \
+      -DCMAKE_INSTALL_PREFIX=/usr \
+      -DLLAMA_BUILD_TESTS=OFF \
+      -DLLAMA_BUILD_EXAMPLES=ON \
+      -DLLAMA_BUILD_SERVER=ON \
+ && cmake --build build --config Release \
+ && cmake --install build --config Release
+
+# libs
+RUN find /opt/llama.cpp/build -type f -name 'lib*.so*' -exec cp {} /usr/lib64/ \; \
+ && ldconfig
+
+# runtime stage
+FROM registry.fedoraproject.org/fedora-minimal:43
+
+# Add required Fedora Toolbox compatibility labels
+LABEL com.github.containers.toolbox="true" \
+      usage="This image is meant to be used with the toolbox command" \
+      summary="Nvidia V100 Llama.cpp Vulkan toolbox"
+
+# runtime deps
+RUN microdnf -y --nodocs --setopt=install_weak_deps=0 install \
+      bash ca-certificates libatomic libstdc++ libgcc \
+      vulkan-loader vulkaninfo procps-ng sudo curl \
+  && microdnf clean all && rm -rf /var/cache/dnf/*
+
+# copy
+COPY --from=builder /usr/ /usr/
+COPY --from=builder /usr/local/ /usr/local/
+COPY --from=builder /opt/llama.cpp/build/bin/rpc-* /usr/local/bin/
+
+# ld
+RUN echo "/usr/local/lib"  > /etc/ld.so.conf.d/local.conf \
+ && echo "/usr/local/lib64" >> /etc/ld.so.conf.d/local.conf \
+ && ldconfig \
+ && cp -n /usr/local/lib/libllama*.so* /usr/lib64/ 2>/dev/null || true \
+ && ldconfig
+
+# shell
+CMD ["/bin/bash"]

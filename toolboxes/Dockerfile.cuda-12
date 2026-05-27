@@ -1,0 +1,68 @@
+# build stage
+FROM docker.io/nvidia/cuda:12.6.3-devel-ubuntu22.04 AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    git \
+    libcurl4-openssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# llama.cpp
+WORKDIR /opt/llama.cpp
+ARG REPO=https://github.com/ggerganov/llama.cpp.git
+ARG BRANCH=master
+RUN git clone -b ${BRANCH} --single-branch --recursive ${REPO} .
+
+# build + install
+RUN ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1
+ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64/stubs:$LD_LIBRARY_PATH
+
+RUN cmake -S . -B build \
+    -DGGML_CUDA=ON \
+    -DCMAKE_CUDA_ARCHITECTURES=70 \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DGGML_RPC=ON \
+    && cmake --build build --config Release -j$(nproc) \
+    && cmake --install build --config Release
+
+# libs
+RUN mkdir -p /usr/local/lib/stubs \
+    && find /opt/llama.cpp/build -type f -name 'lib*.so*' -exec cp {} /usr/local/lib/ \; \
+    && cp /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/lib/stubs/libcuda.so.1 \
+    && ldconfig
+
+# runtime stage
+FROM docker.io/nvidia/cuda:12.6.3-runtime-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Add required Fedora Toolbox compatibility labels
+LABEL com.github.containers.toolbox="true" \
+      usage="This image is meant to be used with the toolbox command" \
+      summary="Nvidia V100 (sm_70) Llama.cpp toolbox"
+
+# Install toolbox dependencies, handle the machine-id so DBUS propagates, and free UID 1000
+RUN apt-get update && apt-get install -y \
+    sudo \
+    libcap2-bin \
+    libnss-myhostname \
+    curl \
+    libgomp1 \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -f /etc/machine-id && touch /etc/machine-id \
+    && userdel -r ubuntu || true \
+    && sed -i 's/^hosts:.*/& myhostname/' /etc/nsswitch.conf
+
+# copy binaries and libraries
+COPY --from=builder /usr/local/ /usr/local/
+
+# ldconfig
+RUN echo "/usr/local/lib"  > /etc/ld.so.conf.d/local.conf \
+    && echo "/usr/local/lib64" >> /etc/ld.so.conf.d/local.conf \
+    && ldconfig
+
+CMD ["/bin/bash"]
