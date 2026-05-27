@@ -82,9 +82,7 @@ for MODEL_PATH in "${MODEL_PATHS[@]}"; do
     # Inject CUDA_VISIBLE_DEVICES before the executable
     CMD_EFFECTIVE="${CMD/-- /-- env CUDA_VISIBLE_DEVICES=$GPU_DEVICES }"
 
-    # V100 does NOT support Flash Attention (requires sm_80+)
-    # Run without -fa flag, unlike P100 which used -fa 1 (falling back anyway)
-    EXTRA_ARGS=()
+    EXTRA_ARGS=( -fa 1 )
 
     for CTX in default longctx32768; do
       CTX_SUFFIX=""
