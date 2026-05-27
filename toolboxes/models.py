@@ -1,9 +1,8 @@
 """
 Centralized model execution profiles for V100 benchmark and TUI runner.
-
 V100 (sm_70, Volta) — 16 GB or 32 GB HBM2 per GPU.
   - FP16 only (no BF16)
-  - bitsandbytes INT4 quantization via jajmangold/vllm-sm70
+  - bitsandbytes INT4 quantization support
   - CUDA Graphs supported
   - No FlashAttention v2 (requires sm_80+)
   - Triton attention + xFormers + PyTorch SDPA available

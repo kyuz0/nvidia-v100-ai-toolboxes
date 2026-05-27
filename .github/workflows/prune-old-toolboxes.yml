@@ -10,7 +10,7 @@ on:
         description: Number of latest tags to keep
         default: "3"
   workflow_run:
-    workflows: ["Build & Publish V100 Toolbox"]
+    workflows: ["Build & Publish V100 Toolbox", "Build & Publish vLLM Toolbox"]
     types: [completed]   # runs after success/failure/cancel
     branches: [main]     
 
@@ -44,7 +44,7 @@ jobs:
         run: |
           IN='${{ github.event.inputs.backends }}'
           if [[ "$IN" == "all" || -z "$IN" ]]; then
-            JSON='["cuda-12"]'
+            JSON='["cuda-12", "vulkan", "vllm"]'
           else
             IN_CLEAN=$(echo "$IN" | tr -d '[:space:]')
             JSON='["'${IN_CLEAN//,/\",\"}'""]'

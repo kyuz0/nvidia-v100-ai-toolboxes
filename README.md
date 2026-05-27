@@ -32,7 +32,7 @@ toolbox create -c llama-v100-vulkan \
   --image docker.io/kyuz0/nvidia-v100-ai-toolboxes:vulkan
 ```
 
-For the vLLM backend (powered by the jajmangold/vllm-sm70 community fork):
+For the vLLM backend (powered by the official vllm/vllm-openai:v0.18.1 base):
 ```bash
 toolbox create -c vllm-v100 \
   --image docker.io/kyuz0/nvidia-v100-ai-toolboxes:vllm

@@ -111,7 +111,7 @@ def generate_llama_tables(results_dir):
     
     lines = []
     lines.append("### Llama.cpp Benchmarks (NGL=99)")
-    lines.append("All tests run with `NGL=99`. V100 does not support Flash Attention (requires sm_80+). (32k = PP2048 @ d32768, TG32 @ d32768)\n")
+    lines.append("All tests run with `NGL=99` and Flash Attention enabled (`-fa 1`). (32k = PP2048 @ d32768, TG32 @ d32768)\n")
     
     lines.append("#### Prompt Processing (PP) Throughput")
     lines.append("| Model | Size | GPUs | Backend | PP512 | PP(32k) |")

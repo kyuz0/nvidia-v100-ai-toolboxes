@@ -1,4 +1,6 @@
-FROM ghcr.io/jajmangold/vllm-sm70:latest
+# vLLM toolbox for NVIDIA V100 (sm_70 / Volta)
+# Uses the official pre-built vLLM image v0.18.1 which natively includes sm_70 kernels.
+FROM docker.io/vllm/vllm-openai:v0.18.1
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONNOUSERSITE=1
@@ -8,8 +10,8 @@ LABEL com.github.containers.toolbox="true" \
       usage="This image is meant to be used with the toolbox command" \
       summary="Nvidia V100 (sm_70) vLLM toolbox"
 
-# Install toolbox dependencies, handle the machine-id so DBUS propagates, and free UID 1000
-RUN apt-get update && apt-get install -y \
+# Install toolbox dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
     sudo \
     libcap2-bin \
     libnss-myhostname \
@@ -21,6 +23,9 @@ RUN apt-get update && apt-get install -y \
     && rm -f /etc/machine-id && touch /etc/machine-id \
     && (userdel -r ubuntu || true) \
     && sed -i 's/^hosts:.*/& myhostname/' /etc/nsswitch.conf || true
+
+# Install bitsandbytes and auto-round for quantization support on V100
+RUN pip install --no-cache-dir bitsandbytes auto-round
 
 # Copy the launcher, benchmark, and model catalogue
 COPY models.py /opt/models.py

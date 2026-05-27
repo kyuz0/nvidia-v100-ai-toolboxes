@@ -2,8 +2,8 @@
 """
 vLLM Launcher for NVIDIA Tesla V100 (sm_70 / Volta)
 ====================================================
-Interactive TUI to select and serve models via the jajmangold/vllm-sm70
-community fork. Supports both V100-16GB and V100-32GB.
+Interactive TUI to select and serve models via the official vllm/vllm-openai
+v0.18.1 image. Supports both V100-16GB and V100-32GB.
 
 V100 characteristics:
   - CUDA Graphs supported — enforce-eager is optional
