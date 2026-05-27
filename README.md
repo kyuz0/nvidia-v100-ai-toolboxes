@@ -5,9 +5,6 @@ This repository provides automatically built Toolbox (`containertoolbx.org`) ima
 > [!NOTE]
 > The V100 is the last NVIDIA architecture fully supported by CUDA 12.x. These builds use **CUDA 12.6.3** (the last release with first-class sm_70 support) and compile `llama.cpp` with the `-DCMAKE_CUDA_ARCHITECTURES=70` flag. CUDA 13.0+ has removed sm_70 offline compilation support.
 
-> [!TIP]
-> **V100 vs P100:** The V100 is a significant upgrade — it has Tensor Cores, ~23% more memory bandwidth (900 vs 732 GB/s), reliable CUDA Graph support, and comes in both 16GB and 32GB variants. See the [research/](research/) directory for detailed comparisons.
-
 ## Getting Started
 
 ### 1. Prerequisites
