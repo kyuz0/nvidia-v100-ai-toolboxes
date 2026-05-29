@@ -1,0 +1,9 @@
+ggml_cuda_init: found 2 CUDA devices (Total VRAM: 32288 MiB):
+  Device 0: Tesla V100-PCIE-16GB, compute capability 7.0, VMM: yes, VRAM: 16144 MiB
+  Device 1: Tesla V100-PCIE-16GB, compute capability 7.0, VMM: yes, VRAM: 16144 MiB
+| model                          |       size |     params | backend    | ngl | n_ubatch | fa |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | -------: | -: | --------------: | -------------------: |
+| gemma4 26B.A4B Q8_0            |  25.94 GiB |    25.23 B | CUDA       |  99 |     2048 |  1 | pp2048 @ d32768 |       1258.70 ± 0.00 |
+| gemma4 26B.A4B Q8_0            |  25.94 GiB |    25.23 B | CUDA       |  99 |     2048 |  1 |   tg32 @ d32768 |         79.44 ± 0.00 |
+
+build: c6e408837 (9368)

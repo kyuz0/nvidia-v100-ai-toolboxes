@@ -59,17 +59,6 @@ def kill_vllm():
                    shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(5)
 
-def nuke_vllm_cache():
-    for cache_dir in [
-        Path.home() / ".cache" / "vllm",
-        Path.home() / ".triton" / "cache",
-    ]:
-        if cache_dir.exists():
-            try:
-                subprocess.run(["rm", "-rf", str(cache_dir)], check=True)
-                cache_dir.mkdir(parents=True, exist_ok=True)
-                time.sleep(2)
-            except: pass
 
 def get_dataset():
     data_path = Path("ShareGPT_V3_unfiltered_cleaned_split.json")
@@ -126,6 +115,10 @@ def get_model_args(model, tp_size):
     if config.get("trust_remote"): cmd.append("--trust-remote-code")
     if config.get("enforce_eager"): cmd.append("--enforce-eager")
     if config.get("language_model_only"): cmd.append("--language-model-only")
+    # GPTQ: force exllama kernel explicitly (not gptq_marlin which requires sm_75+)
+    if config.get("quantization"): cmd.extend(["--quantization", config["quantization"]])
+    # GPTQ on PCIe V100: vLLM's custom allreduce (shm_broadcast) deadlocks on Volta
+    if config.get("disable_custom_allreduce"): cmd.append("--disable-custom-all-reduce")
     return cmd
 
 def run_throughput(model, tp_size, output_dir=RESULTS_DIR):
@@ -148,7 +141,6 @@ def run_throughput(model, tp_size, output_dir=RESULTS_DIR):
 
     log(f"START {model} (TP={tp_size}) [Batch: {batch_tokens}]...")
     kill_vllm()
-    nuke_vllm_cache()
 
     cmd = ["vllm", "bench", "throughput"] + get_model_args(model, tp_size)
     cmd.extend([
@@ -161,9 +153,21 @@ def run_throughput(model, tp_size, output_dir=RESULTS_DIR):
     cmd.extend(dataset_args)
 
     env = os.environ.copy()
-    env["VLLM_USE_V1"] = "0"
-    env["VLLM_DISABLE_COMPILE_CACHE"] = "1"
+    # NOTE: VLLM_USE_V1 not recognized in v0.18.1 — V1 engine is mandatory
     env["PYTHONNOUSERSITE"] = "1"
+    # GPTQ on PCIe V100: no NVLink → NCCL P2P stalls; force net transport
+    config = MODEL_TABLE.get(model, {})
+    if config.get("nccl_p2p_disable"):
+        env["NCCL_P2P_DISABLE"] = "1"
+        env["NCCL_SHM_DISABLE"] = "1"
+    # GPTQ on sm_70: gptq_gemm deadlocks during profiling forward pass — skip it
+    if config.get("skip_profile_run"):
+        env["VLLM_SKIP_PROFILE_RUN"] = "1"
+    # Hybrid models (Qwen3.5-9B, Qwen3.6): DeltaNet/GDN activations fragment the
+    # CUDA allocator pool mid-run → expandable segments let PyTorch serve large
+    # requests from non-contiguous reserved pages instead of hard-crashing.
+    if config.get("pytorch_expandable_segments"):
+        env["PYTORCH_ALLOC_CONF"] = "expandable_segments:True"
 
     try:
         subprocess.run(cmd, check=True, env=env)
@@ -206,17 +210,28 @@ if __name__ == "__main__":
     gpu_count = get_gpu_count()
     log(f"Detected {gpu_count} NVIDIA GPU(s)")
 
+    # Set default TP sizes dynamically if not explicitly specified by user
+    if args.tp == [1] and "--tp" not in sys.argv:
+        if gpu_count >= 4:
+            args.tp = [2, 4]
+        elif gpu_count >= 2:
+            args.tp = [2]
+        else:
+            args.tp = [1]
+
     valid_tp_args = [t for t in args.tp if t <= gpu_count]
     if not valid_tp_args:
         log(f"Requested TP={args.tp} but only {gpu_count} GPU(s) detected. Nothing to run.")
         sys.exit(0)
 
-    triton_cache = Path.home() / ".triton" / "cache"
+    # Clear the vLLM torch_compile cache (compiled graphs go stale between runs).
+    # Do NOT clear the Triton kernel cache (~/.triton/cache): it stores autotuned
+    # configs for the GDN/DeltaNet Triton kernels; rebuilding it costs 4-6 minutes
+    # per model on first inference. Only clear it manually after a Triton upgrade.
     vllm_cache = Path.home() / ".cache" / "vllm" / "torch_compile_cache"
-    for cache_dir in [triton_cache, vllm_cache]:
-        if cache_dir.exists():
-            subprocess.run(["rm", "-rf", str(cache_dir)], check=False)
-            log(f"Cleared cache: {cache_dir}")
+    if vllm_cache.exists():
+        subprocess.run(["rm", "-rf", str(vllm_cache)], check=False)
+        log(f"Cleared vLLM compile cache: {vllm_cache}")
 
     kill_vllm()
     for tp in valid_tp_args:

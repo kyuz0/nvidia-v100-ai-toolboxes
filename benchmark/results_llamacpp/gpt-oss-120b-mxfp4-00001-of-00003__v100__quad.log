@@ -1,0 +1,9 @@
+ggml_cuda_init: found 4 CUDA devices (Total VRAM: 64576 MiB):
+  Device 0: Tesla V100-PCIE-16GB, compute capability 7.0, VMM: yes, VRAM: 16144 MiB
+  Device 1: Tesla V100-PCIE-16GB, compute capability 7.0, VMM: yes, VRAM: 16144 MiB
+  Device 2: Tesla V100-PCIE-16GB, compute capability 7.0, VMM: yes, VRAM: 16144 MiB
+  Device 3: Tesla V100-PCIE-16GB, compute capability 7.0, VMM: yes, VRAM: 16144 MiB
+llama_bench: error: failed to load model '/home/donato/models/gpt-oss-120b/gpt-oss-120b-mxfp4-00001-of-00003.gguf'
+| model                          |       size |     params | backend    | ngl | fa |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | -: | --------------: | -------------------: |
+✖ ! [v100] gpt-oss-120b-mxfp4-00001-of-00003 failed (exit 0)

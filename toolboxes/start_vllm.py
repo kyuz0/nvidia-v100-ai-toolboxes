@@ -86,6 +86,36 @@ def run_dialog(args):
             return None
 
 
+def kill_gpu_zombies():
+    """Kill any lingering processes holding CUDA/GPU contexts (zombie vLLM runs etc.)."""
+    print("  Killing GPU zombie processes...", end="", flush=True)
+    try:
+        # Get PIDs of processes using any /dev/nvidia device
+        res = subprocess.run(
+            ["fuser", "/dev/nvidia0", "/dev/nvidia1", "/dev/nvidia2", "/dev/nvidia3",
+             "/dev/nvidiactl", "/dev/nvidia-uvm"],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True
+        )
+        pids = set(res.stdout.split())
+        own_pid = str(os.getpid())
+        pids.discard(own_pid)
+        if pids:
+            subprocess.run(["kill", "-9"] + list(pids),
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            time.sleep(3)  # allow CUDA contexts to fully release
+            print(f" Killed {len(pids)} process(es).")
+        else:
+            print(" None found.")
+    except FileNotFoundError:
+        # fuser not available — fallback: kill vllm/python procs by name
+        subprocess.run("pgrep -f 'vllm serve' | xargs -r kill -9",
+                       shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(3)
+        print(" Done (name-based kill).")
+    except Exception as e:
+        print(f" Warning: {e}")
+
+
 def nuke_vllm_cache():
     """Removes vLLM cache directory."""
     for cache_dir, label in [
@@ -139,8 +169,17 @@ def configure_and_launch(model_idx, gpu_count):
             return False
 
         if choice == "1":
-            new_tp = run_dialog(["--title", "Tensor Parallelism", "--rangebox", f"Set TP Size (1-{max_tp})", "10", "40", "1", str(max_tp), str(current_tp)])
-            if new_tp: current_tp = int(new_tp)
+            tp_menu = []
+            for tp_val in valid_tps:
+                if tp_val <= gpu_count:
+                    tp_menu.extend([str(tp_val), f"TP={tp_val} GPU(s)"])
+            if tp_menu:
+                new_tp = run_dialog([
+                    "--title", "Tensor Parallelism",
+                    "--menu", "Select Tensor Parallelism (TP) Size:", "12", "50", "4"
+                ] + tp_menu)
+                if new_tp:
+                    current_tp = int(new_tp)
         elif choice == "2":
             new_seqs = run_dialog(["--title", "Concurrent Requests", "--inputbox", "Max Concurrent Requests:", "10", "40", str(current_seqs)])
             if new_seqs: current_seqs = int(new_seqs)
@@ -159,6 +198,8 @@ def configure_and_launch(model_idx, gpu_count):
 
     # Build Command
     subprocess.run(["clear"])
+    print("Pre-launch cleanup:")
+    kill_gpu_zombies()  # always purge zombie CUDA contexts before launching
     if clear_cache:
         nuke_vllm_cache()
 
@@ -176,16 +217,29 @@ def configure_and_launch(model_idx, gpu_count):
     if config.get("trust_remote"): cmd.append("--trust-remote-code")
     if use_eager: cmd.append("--enforce-eager")
     if config.get("language_model_only"): cmd.append("--language-model-only")
+    # GPTQ: explicitly force exllama kernel (avoids auto-selecting gptq_marlin which needs sm_75+)
+    if config.get("quantization"): cmd.extend(["--quantization", config["quantization"]])
+    # GPTQ on PCIe V100: disable vLLM's custom allreduce (shm_broadcast) — it deadlocks on Volta
+    if config.get("disable_custom_allreduce"): cmd.append("--disable-custom-all-reduce")
 
     env = os.environ.copy()
-    env["VLLM_USE_V1"] = "0"
-    env["VLLM_DISABLE_COMPILE_CACHE"] = "1"
+    # NOTE: VLLM_USE_V1 is not recognized in v0.18.1 — V1 engine is mandatory
     env["PYTHONNOUSERSITE"] = "1"
+    # GPTQ on PCIe V100: disable NCCL P2P — no NVLink means peer-access fails silently and stalls
+    if config.get("nccl_p2p_disable"):
+        env["NCCL_P2P_DISABLE"] = "1"
+        env["NCCL_SHM_DISABLE"] = "1"
+    # GPTQ on sm_70: gptq_gemm deadlocks during profiling forward pass — skip it
+    if config.get("skip_profile_run"):
+        env["VLLM_SKIP_PROFILE_RUN"] = "1"
 
     print("\n" + "=" * 60)
     print(f" Launching: {name}")
     print(f" Hardware:  V100-{VRAM_PER_GPU_GB}GB x {gpu_count}")
     print(f" Config:    TP={current_tp} | Seqs={current_seqs} | Ctx={current_ctx} | Util={current_util} | Eager={use_eager}")
+    if config.get("quantization"):
+        skip_str = " | SkipProfile=YES" if config.get("skip_profile_run") else ""
+        print(f" Quant:     {config['quantization']} | CustomAllReduce=OFF | NCCL_P2P=OFF | NCCL_SHM=OFF{skip_str}")
     if clear_cache:
         print(f" Action:    Clearing vLLM Cache (~/.cache/vllm)")
     print(f" Command:   {' '.join(cmd)}")

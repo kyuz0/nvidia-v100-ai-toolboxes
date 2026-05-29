@@ -27,6 +27,100 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install bitsandbytes and auto-round for quantization support on V100
 RUN pip install --no-cache-dir bitsandbytes auto-round
 
+# ── Volta / sm_70 workaround ────────────────────────────────────────────────
+# The gptq_gemm 4-bit kernel deadlocks during the profiling forward pass
+# (_dummy_run) when used with TP>1 on V100 (sm_70).  vLLM itself warns:
+#   "Currently, the 4-bit gptq_gemm kernel for GPTQ is buggy."
+# There is no CLI flag to skip the profiling forward pass; it is always called.
+# This patch adds a VLLM_SKIP_PROFILE_RUN=1 env-var check at the top of
+# profile_run() so that GPTQ models can start without hanging.
+# KV-cache sizing is then driven purely by gpu_memory_utilization (set lower
+# to compensate for activation workspace that profiling would normally measure).
+RUN python3 - << 'PATCH_EOF'
+import pathlib, sys
+
+# ── Patch 1: profile_run in gpu_model_runner.py ─────────────────────────────
+# gptq_gemm deadlocks during the profiling forward pass on sm_70 with TP>1.
+TARGET = pathlib.Path(
+    "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu_model_runner.py"
+)
+txt = TARGET.read_text()
+
+OLD = (
+    "    def profile_run(self) -> None:\n"
+    "        # Profile with multimodal encoder & encoder cache."
+)
+NEW = (
+    "    def profile_run(self) -> None:\n"
+    "        # sm_70 / Volta workaround: VLLM_SKIP_PROFILE_RUN=1 bypasses the\n"
+    "        # profiling forward pass that deadlocks with the gptq_gemm kernel.\n"
+    "        import os as _os\n"
+    "        if _os.environ.get('VLLM_SKIP_PROFILE_RUN') == '1':\n"
+    "            logger.warning(\n"
+    "                'VLLM_SKIP_PROFILE_RUN=1: skipping profiling forward pass. '\n"
+    "                'KV-cache size is estimated from gpu_memory_utilization only '\n"
+    "                '(sm_70/Volta workaround for gptq_gemm deadlock).'\n"
+    "            )\n"
+    "            return\n"
+    "        # Profile with multimodal encoder & encoder cache."
+)
+
+if OLD not in txt:
+    print(f"ERROR: patch 1 anchor not found in {TARGET}", file=sys.stderr)
+    sys.exit(1)
+
+TARGET.write_text(txt.replace(OLD, NEW, 1))
+print(f"Patched profile_run in {TARGET}")
+
+# ── Patch 2: _warmup_prefill_kernels in qwen3_next.py ───────────────────────
+# After skipping profile_run, the KV cache is fully allocated and the Triton
+# autotuner for the GDN (Gated DeltaNet) prefill kernel OOMs on every config
+# it tries to benchmark, flooding the log with warnings. Skip the whole warmup
+# when VLLM_SKIP_PROFILE_RUN=1 — the autotuner would have failed anyway.
+TARGET2 = pathlib.Path(
+    "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/models/qwen3_next.py"
+)
+lines = TARGET2.read_text().split('\n')
+patched = False
+for i, line in enumerate(lines):
+    if 'def _warmup_prefill_kernels' in line:
+        indent = ' ' * (len(line) - len(line.lstrip()) + 4)
+        lines.insert(i + 1, indent + "import os as _os")
+        lines.insert(i + 2, indent + "if _os.environ.get('VLLM_SKIP_PROFILE_RUN') == '1': return  # sm_70 workaround")
+        patched = True
+        break
+
+if not patched:
+    print(f"ERROR: patch 2 anchor not found in {TARGET2}", file=sys.stderr)
+    sys.exit(1)
+
+TARGET2.write_text('\n'.join(lines))
+print(f"Patched _warmup_prefill_kernels in {TARGET2}")
+
+# ── Patch 3: triton/testing.py ───────────────────────────────────────────────
+# Triton's do_bench() allocates a 256 MiB L3-cache flush buffer before timing
+# each kernel config. On V100s with KV cache fully allocated this OOM-crashes
+# the worker instead of just degrading autotuner accuracy. Wrap in try/except
+# so the autotuner falls back to benchmarking without the cache flush.
+TARGET3 = pathlib.Path(
+    "/usr/local/lib/python3.12/dist-packages/triton/testing.py"
+)
+txt3 = TARGET3.read_text()
+OLD3 = "    cache = runtime.driver.active.get_empty_cache_for_benchmark()"
+NEW3 = (
+    "    try:\n"
+    "        cache = runtime.driver.active.get_empty_cache_for_benchmark()\n"
+    "    except Exception:\n"
+    "        cache = None  # V100 workaround: skip L3 flush when OOM (sm_70 VRAM tight)"
+)
+if OLD3 not in txt3:
+    print(f"WARNING: patch 3 anchor not found in {TARGET3} (may already be patched)", file=sys.stderr)
+else:
+    TARGET3.write_text(txt3.replace(OLD3, NEW3, 1))
+    print(f"Patched do_bench L3 flush in {TARGET3}")
+PATCH_EOF
+
+
 # Copy the launcher, benchmark, and model catalogue
 COPY models.py /opt/models.py
 COPY start_vllm.py /usr/local/bin/start-vllm
