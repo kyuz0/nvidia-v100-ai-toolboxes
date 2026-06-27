@@ -22,7 +22,7 @@ RUN git clean -xdf \
       -DGGML_VULKAN=ON \
       -DCMAKE_BUILD_TYPE=Release \
       -DGGML_RPC=ON \
-      -DCMAKE_INSTALL_PREFIX=/usr \
+      -DCMAKE_INSTALL_PREFIX=/usr/local \
       -DLLAMA_BUILD_TESTS=OFF \
       -DLLAMA_BUILD_EXAMPLES=ON \
       -DLLAMA_BUILD_SERVER=ON \

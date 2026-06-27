@@ -26,8 +26,8 @@ done
 echo
 
 declare -A CMDS=(
-  [v100]="toolbox run -c llama-v100-cuda -- /usr/local/bin/llama-bench"
-  [vulkan]="toolbox run -c llama-v100-vulkan -- /usr/local/bin/llama-bench"
+  [v100]="toolbox run -c llama-v100-cuda -- llama-bench"
+  [vulkan]="toolbox run -c llama-v100-vulkan -- llama-bench"
 )
 
 # Auto-detect VRAM per GPU to set thresholds

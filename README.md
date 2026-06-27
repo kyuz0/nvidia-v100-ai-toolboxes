@@ -75,4 +75,46 @@ These toolboxes are automatically rebuilt every 4 hours via GitHub Actions if up
 
 ## Benchmarks
 
-*Benchmarks will be populated after running `benchmark/run_benchmarks.sh` on V100 hardware.*
+### Llama.cpp Benchmarks (NGL=99, FA=1)
+All tests run with `NGL=99` and `FA=1`. (32k = PP2048 @ d32768, TG32 @ d32768)
+
+#### Prompt Processing (PP) Throughput
+| Model | Size | GPUs | Backend | PP512 | PP(32k) |
+| --- | --- | --- | --- | --- | --- |
+| Qwen3.5-122B-A10B-Q3_K_M | 52.54 GiB | 4 | v100 | 487.02 ± 2.02 | 464.36 ± 0.00 |
+| Qwen3.5-35B-A3B-UD-Q4_K_XL | 20.70 GiB | 2 | v100 | 811.16 ± 3.03 | 824.86 ± 0.00 |
+| Qwen3.5-35B-A3B-UD-Q8_K_XL | 45.33 GiB | 4 | v100 | 941.60 ± 9.86 | 866.05 ± 0.00 |
+| Qwen3.6-27B-UD-Q4_K_XL | 16.39 GiB | 2 | v100 | 852.18 ± 2.52 | 622.78 ± 0.00 |
+| Qwen3.6-27B-UD-Q8_K_XL | 32.89 GiB | 3 | v100 | 1012.61 ± 3.09 | 629.22 ± 0.00 |
+| Qwen3.6-35B-A3B-UD-Q4_K_XL | 20.81 GiB | 2 | v100 | 804.11 ± 2.48 | 837.46 ± 0.00 |
+| Qwen3.6-35B-A3B-UD-Q8_K_XL | 35.80 GiB | 3 | v100 | 670.61 ± 4.03 | 797.49 ± 0.00 |
+| gemma-4-26B-A4B-it-UD-Q4_K_XL | 15.90 GiB | 2 | v100 | 1615.92 ± 8.70 | 1318.48 ± 0.00 |
+| gemma-4-26B-A4B-it-UD-Q8_K_XL | 25.94 GiB | 2 | v100 | 1430.12 ± 11.53 | 1258.70 ± 0.00 |
+| gemma-4-E4B-it-UD-Q8_K_XL | 8.05 GiB | 1 | v100 | 4659.53 ± 54.68 | 2177.93 ± 0.00 |
+| gpt-oss-20b-mxfp4 | 11.27 GiB | 1 | v100 | 2521.60 ± 5.84 | 2043.74 ± 0.00 |
+
+#### Text Generation (TG) Throughput
+| Model | Size | GPUs | Backend | TG128 | TG(32k) |
+| --- | --- | --- | --- | --- | --- |
+| Qwen3.5-122B-A10B-Q3_K_M | 52.54 GiB | 4 | v100 | 48.67 ± 1.74 | 46.41 ± 0.00 |
+| Qwen3.5-35B-A3B-UD-Q4_K_XL | 20.70 GiB | 2 | v100 | 102.09 ± 0.08 | 91.47 ± 0.00 |
+| Qwen3.5-35B-A3B-UD-Q8_K_XL | 45.33 GiB | 4 | v100 | 84.62 ± 1.28 | 76.42 ± 0.00 |
+| Qwen3.6-27B-UD-Q4_K_XL | 16.39 GiB | 2 | v100 | 34.13 ± 0.01 | 28.14 ± 0.00 |
+| Qwen3.6-27B-UD-Q8_K_XL | 32.89 GiB | 3 | v100 | 21.62 ± 0.01 | 18.77 ± 0.00 |
+| Qwen3.6-35B-A3B-UD-Q4_K_XL | 20.81 GiB | 2 | v100 | 103.76 ± 0.07 | 92.97 ± 0.00 |
+| Qwen3.6-35B-A3B-UD-Q8_K_XL | 35.80 GiB | 3 | v100 | 96.82 ± 2.25 | 87.23 ± 0.00 |
+| gemma-4-26B-A4B-it-UD-Q4_K_XL | 15.90 GiB | 2 | v100 | 99.62 ± 0.04 | 87.07 ± 0.00 |
+| gemma-4-26B-A4B-it-UD-Q8_K_XL | 25.94 GiB | 2 | v100 | 90.42 ± 0.06 | 79.44 ± 0.00 |
+| gemma-4-E4B-it-UD-Q8_K_XL | 8.05 GiB | 1 | v100 | 87.01 ± 0.04 | 77.12 ± 0.00 |
+| gpt-oss-20b-mxfp4 | 11.27 GiB | 1 | v100 | 158.57 ± 0.11 | 134.14 ± 0.00 |
+
+### vLLM Throughput
+| Model | TP | Requests | Total Tokens | Tokens/sec | Requests/sec | Elapsed (sec) |
+| --- | --- | --- | --- | --- | --- | --- |
+| meta-llama_Meta-Llama-3.1-8B-Instruct | 2 | 500 | 361361 | 1625.33 | 2.2489 | 222.33 |
+| meta-llama_Meta-Llama-3.1-8B-Instruct | 4 | 500 | 361361 | 2483.35 | 3.4361 | 145.51 |
+| btbtyler09_Qwen3.6-27B-GPTQ-4bit | 2 | 500 | 367735 | 124.77 | 0.1696 | 2947.36 |
+| btbtyler09_Qwen3.6-27B-GPTQ-4bit | 4 | 500 | 367735 | 194.65 | 0.2647 | 1889.22 |
+| palmfuture_Qwen3.6-35B-A3B-GPTQ-Int4 | 2 | 500 | 367735 | 17.49 | 0.0238 | 21021.41 |
+| palmfuture_Qwen3.6-35B-A3B-GPTQ-Int4 | 4 | 500 | 367735 | 304.50 | 0.4140 | 1207.68 |
+| Qwen_Qwen3.5-9B | 4 | 500 | 367735 | 1438.30 | 1.9556 | 255.67 |
